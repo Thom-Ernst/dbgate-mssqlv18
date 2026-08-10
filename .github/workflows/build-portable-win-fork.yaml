@@ -1,0 +1,111 @@
+# --------------------------------------------------------------------------------------------
+# Fork-specific workflow (not generated from common/templates).
+# Builds an unsigned portable Windows build (zip + NSIS installer, x64) and attaches it to a
+# GitHub release on this fork, creating the release tag (v${BUILD_VERSION}) in the process.
+# Triggered only by pushes that change this file - to cut a new release, bump BUILD_VERSION
+# below and push. The tag pattern never collides with the upstream v[0-9]+.[0-9]+.[0-9]+*
+# release workflows.
+# --------------------------------------------------------------------------------------------
+name: Portable Windows build (fork)
+'on':
+  push:
+    branches:
+      - claude/sql-server-driver-fallback-uuoj0u
+    paths:
+      - .github/workflows/build-portable-win-fork.yaml
+env:
+  BUILD_VERSION: 7.2.5-mssql18.1
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --upgrade pip setuptools
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - name: Set version, disable auto-updater
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const version = process.env.BUILD_VERSION;
+          const root = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          root.version = version;
+          fs.writeFileSync('package.json', JSON.stringify(root, null, 2) + '\n');
+          // fork build: no publish config, so electron-updater never replaces this
+          // build with an official one that lacks the fork patches
+          const app = JSON.parse(fs.readFileSync('app/package.json', 'utf8'));
+          delete app.build.win.publish;
+          fs.writeFileSync('app/package.json', JSON.stringify(app, null, 2) + '\n');
+          console.log('Building version', version);
+          EOF
+      - name: adjustPackageJson
+        run: node adjustPackageJson --community
+      - name: yarn set timeout
+        run: yarn config set network-timeout 100000
+      - name: yarn install
+        run: yarn install
+      - name: setCurrentVersion
+        run: yarn setCurrentVersion
+      - name: fillPackagedPlugins
+        run: yarn fillPackagedPlugins
+      - name: Build plugins
+        run: yarn plugins:copydist
+      - name: Install app dependencies
+        working-directory: app
+        run: yarn install
+      - name: Build API
+        run: yarn build:api
+      - name: Build web
+        run: yarn build:web
+      - name: Build Windows app (zip + nsis, x64, unsigned)
+        working-directory: app
+        run: yarn dist --win zip nsis --x64
+      - name: List artifacts
+        shell: bash
+        run: ls -la app/dist
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: |
+            app/dist/*.zip
+            app/dist/*.exe
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.BUILD_VERSION }}
+          target_commitish: ${{ github.sha }}
+          fail_on_unmatched_files: true
+          files: |
+            app/dist/*.zip
+            app/dist/*.exe
+          name: DbGate v${{ env.BUILD_VERSION }} (SQL Server ODBC Driver 18 fix)
+          body: |
+            Unofficial fork build of DbGate Community with SQL Server **ODBC Driver 18** support
+            in the native Windows connection path (`msnodesqlv8`, used for Windows auth / SQL auth on Windows).
+
+            The patch adds `ODBC Driver 18 for SQL Server` to the ODBC driver fallback list, passes
+            `Encrypt=Optional` for driver 18 (restores the pre-18 encryption behavior so self-signed
+            server certificates keep working) and honors the *Trust server certificate* connection
+            setting in the ODBC connection string.
+
+            **Artifacts (Windows x64, unsigned):**
+            - `dbgate-*-win_x64.zip` — portable build: unzip anywhere and run `DbGate.exe`
+            - `dbgate-*-win_x64.exe` — NSIS installer
+
+            Binaries are not code-signed, so SmartScreen may warn on first run (*More info → Run anyway*).
+            Auto-update is disabled in this build so it never replaces itself with an official build
+            that lacks this patch.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
