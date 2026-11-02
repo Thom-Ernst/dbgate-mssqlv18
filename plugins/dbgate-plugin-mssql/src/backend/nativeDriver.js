@@ -54,13 +54,17 @@ function extractNativeColumns(meta) {
   return res;
 }
 
-async function connectWithDriver({ server, port, user, password, database, authType }, driver) {
+async function connectWithDriver({ server, port, user, password, database, authType, trustServerCertificate }, driver) {
   let connectionString = `server=${server}`;
   if (port && !server.includes('\\')) connectionString += `,${port}`;
   connectionString += `;Driver={${driver}}`;
   if (authType == 'sspi') connectionString += ';Trusted_Connection=Yes';
   else connectionString += `;UID=${user};PWD=${password}`;
   if (database) connectionString += `;Database=${extractDbNameFromComposite(database)}`;
+  // ODBC Driver 18 changed the Encrypt default from no to yes; Optional restores the behavior
+  // of older drivers - encrypt only when the server requires it
+  if (driver == 'ODBC Driver 18 for SQL Server') connectionString += ';Encrypt=Optional';
+  if (trustServerCertificate) connectionString += ';TrustServerCertificate=Yes';
   // Add UTF-8 character set to properly handle non-ASCII characters (e.g., Chinese)
   connectionString += ';CHARSET=UTF8';
   return new Promise((resolve, reject) => {
@@ -75,7 +79,7 @@ async function connectWithDriver({ server, port, user, password, database, authT
 }
 
 async function nativeConnect(connection) {
-  const drivers = ['ODBC Driver 17 for SQL Server', 'SQL Server Native Client 11.0'];
+  const drivers = ['ODBC Driver 18 for SQL Server', 'ODBC Driver 17 for SQL Server', 'SQL Server Native Client 11.0'];
 
   for (let i = 0; i < drivers.length; i += 1) {
     try {
