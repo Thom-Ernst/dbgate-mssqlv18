@@ -170,8 +170,8 @@ const driver = {
       'defaultIsolationLevel',
       'allowedDatabases',
       'allowedDatabasesRegex',
+      'trustServerCertificate',
     ].includes(field) ||
-    (field == 'trustServerCertificate' && values.authType != 'sql' && values.authType != 'sspi') ||
     (field == 'windowsDomain' && values.authType != 'sql' && values.authType != 'sspi' && values.authType != 'msentra'),
   // (field == 'useDatabaseUrl' && values.authType != 'sql' && values.authType != 'sspi')
   getQuerySplitterOptions: usage =>
