@@ -10,11 +10,11 @@ name: Portable Windows build (fork)
 'on':
   push:
     branches:
-      - mssql18-v7.3.3
+      - mssql18-v7.3.4
     paths:
       - .github/workflows/build-portable-win-fork.yaml
 env:
-  BUILD_VERSION: 7.3.3-mssql18.1
+  BUILD_VERSION: 7.3.4-mssql18.1
 permissions:
   contents: write
 jobs:
